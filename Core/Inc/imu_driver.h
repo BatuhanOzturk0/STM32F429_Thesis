@@ -52,6 +52,11 @@ typedef struct
     float   gyro_z_dps;
 } IMU_GyroData_t;
 
+/* Continuous test configuration: 10 minutes at 500ms sample interval */
+#define IMU_TEST_SAMPLE_INTERVAL_MS  500
+#define IMU_TEST_DURATION_MS         (10U * 60U * 1000U)
+#define IMU_TEST_PRINT_EVERY_N       10
+
 /* Function Prototypes */
 HAL_StatusTypeDef IMU_ReadWhoAmI(I2C_HandleTypeDef *hi2c, uint8_t *who_am_i_value);
 uint8_t IMU_CheckConnection(I2C_HandleTypeDef *hi2c);
@@ -59,5 +64,6 @@ HAL_StatusTypeDef IMU_ReadAccel(I2C_HandleTypeDef *hi2c, IMU_AccelData_t *accel_
 void IMU_PrintAccel(const IMU_AccelData_t *accel_data);
 HAL_StatusTypeDef IMU_ReadGyro(I2C_HandleTypeDef *hi2c, IMU_GyroData_t *gyro_data);
 void IMU_PrintGyro(const IMU_GyroData_t *gyro_data);
+void IMU_RunContinuousTest(I2C_HandleTypeDef *hi2c);
 
 #endif /* INC_IMU_DRIVER_H_ */

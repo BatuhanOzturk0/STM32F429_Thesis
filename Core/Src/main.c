@@ -140,6 +140,7 @@ int main(void)
       IMU_PrintGyro(&gyro_sample);
   }
 
+  IMU_RunContinuousTest(&hi2c3);
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */

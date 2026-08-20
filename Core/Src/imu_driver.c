@@ -159,3 +159,68 @@ void IMU_PrintGyro(const IMU_GyroData_t *gyro_data)
            gyro_data->gyro_x_raw, gyro_data->gyro_y_raw, gyro_data->gyro_z_raw,
            gyro_data->gyro_x_dps, gyro_data->gyro_y_dps, gyro_data->gyro_z_dps);
 }
+
+/**
+ * @brief  Runs a continuous read test for IMU_TEST_DURATION_MS milliseconds,
+ *         sampling both accelerometer and gyroscope every
+ *         IMU_TEST_SAMPLE_INTERVAL_MS milliseconds. Prints a status line
+ *         every IMU_TEST_PRINT_EVERY_N samples and a final summary report.
+ * @param  hi2c: I2C handle to use
+ * @retval None
+ */
+void IMU_RunContinuousTest(I2C_HandleTypeDef *hi2c)
+{
+    IMU_AccelData_t accel_data;
+    IMU_GyroData_t  gyro_data;
+    uint32_t sample_count = 0;
+    uint32_t success_count = 0;
+    uint32_t error_count = 0;
+    uint32_t test_start_tick = HAL_GetTick();
+    uint32_t next_sample_tick = test_start_tick;
+
+    printf("\r\n=== Layer 1: 10-Minute Continuous IMU Read Test ===\r\n");
+    printf("Sample interval: %d ms | Duration: %lu ms\r\n",
+           IMU_TEST_SAMPLE_INTERVAL_MS, (unsigned long)IMU_TEST_DURATION_MS);
+
+    while ((HAL_GetTick() - test_start_tick) < IMU_TEST_DURATION_MS)
+    {
+        if (HAL_GetTick() < next_sample_tick)
+        {
+            continue;
+        }
+        next_sample_tick += IMU_TEST_SAMPLE_INTERVAL_MS;
+
+        sample_count++;
+
+        HAL_StatusTypeDef accel_status = IMU_ReadAccel(hi2c, &accel_data);
+        HAL_StatusTypeDef gyro_status  = IMU_ReadGyro(hi2c, &gyro_data);
+
+        if (accel_status == HAL_OK && gyro_status == HAL_OK)
+        {
+            success_count++;
+
+            if ((sample_count % IMU_TEST_PRINT_EVERY_N) == 0)
+            {
+                printf("[Sample %5lu] ", (unsigned long)sample_count);
+                IMU_PrintAccel(&accel_data);
+            }
+        }
+        else
+        {
+            error_count++;
+            printf("[Sample %5lu] READ ERROR - accel_status:%d gyro_status:%d\r\n",
+                   (unsigned long)sample_count, accel_status, gyro_status);
+        }
+    }
+
+    float success_rate = (sample_count > 0)
+                          ? (100.0f * (float)success_count / (float)sample_count)
+                          : 0.0f;
+
+    printf("\r\n=== Continuous Test Summary ===\r\n");
+    printf("Total samples   : %lu\r\n", (unsigned long)sample_count);
+    printf("Successful reads: %lu\r\n", (unsigned long)success_count);
+    printf("Failed reads    : %lu\r\n", (unsigned long)error_count);
+    printf("Success rate    : %.2f %%\r\n", success_rate);
+    printf("================================\r\n");
+}
