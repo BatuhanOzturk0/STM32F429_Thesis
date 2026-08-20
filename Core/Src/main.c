@@ -133,6 +133,13 @@ int main(void)
   {
       IMU_PrintAccel(&accel_sample);
   }
+
+  IMU_GyroData_t gyro_sample;
+  if (IMU_ReadGyro(&hi2c3, &gyro_sample) == HAL_OK)
+  {
+      IMU_PrintGyro(&gyro_sample);
+  }
+
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
