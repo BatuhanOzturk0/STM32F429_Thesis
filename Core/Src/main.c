@@ -24,7 +24,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
-
+#include "imu_driver.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -125,6 +125,8 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   printf("Hello STM32\r\n");
+  printf("=== Layer 1: MPU9250 WHO_AM_I Test ===\r\n");
+  IMU_CheckConnection(&hi2c3);
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
