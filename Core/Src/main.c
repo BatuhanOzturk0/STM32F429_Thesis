@@ -127,6 +127,12 @@ int main(void)
   printf("Hello STM32\r\n");
   printf("=== Layer 1: MPU9250 WHO_AM_I Test ===\r\n");
   IMU_CheckConnection(&hi2c3);
+
+  IMU_AccelData_t accel_sample;
+  if (IMU_ReadAccel(&hi2c3, &accel_sample) == HAL_OK)
+  {
+      IMU_PrintAccel(&accel_sample);
+  }
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */

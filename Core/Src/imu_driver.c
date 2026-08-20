@@ -65,3 +65,55 @@ uint8_t IMU_CheckConnection(I2C_HandleTypeDef *hi2c)
         return 0;
     }
 }
+
+/**
+ * @brief  Reads raw accelerometer data (X, Y, Z) and converts to g-units
+ * @param  hi2c: I2C handle to use
+ * @param  accel_data: pointer to struct where results will be stored
+ * @retval HAL_StatusTypeDef: HAL_OK on success, otherwise an error code
+ */
+HAL_StatusTypeDef IMU_ReadAccel(I2C_HandleTypeDef *hi2c, IMU_AccelData_t *accel_data)
+{
+    HAL_StatusTypeDef status;
+    uint8_t raw_bytes[6];
+
+    /* ACCEL_XOUT_H through ACCEL_ZOUT_L are 6 consecutive registers,
+     * so we can read them in a single burst transfer instead of
+     * doing six separate 1-byte reads. */
+    status = HAL_I2C_Mem_Read(hi2c,
+                               MPU9250_I2C_ADDR,
+                               MPU9250_REG_ACCEL_XOUT_H,
+                               I2C_MEMADD_SIZE_8BIT,
+                               raw_bytes,
+                               6,
+                               100);
+
+    if (status != HAL_OK)
+    {
+        return status;
+    }
+
+    /* Combine high and low bytes into signed 16-bit raw values */
+    accel_data->accel_x_raw = (int16_t)((raw_bytes[0] << 8) | raw_bytes[1]);
+    accel_data->accel_y_raw = (int16_t)((raw_bytes[2] << 8) | raw_bytes[3]);
+    accel_data->accel_z_raw = (int16_t)((raw_bytes[4] << 8) | raw_bytes[5]);
+
+    /* Convert raw values to g-units using the +/-2g full-scale sensitivity */
+    accel_data->accel_x_g = accel_data->accel_x_raw / MPU9250_ACCEL_SENSITIVITY_2G;
+    accel_data->accel_y_g = accel_data->accel_y_raw / MPU9250_ACCEL_SENSITIVITY_2G;
+    accel_data->accel_z_g = accel_data->accel_z_raw / MPU9250_ACCEL_SENSITIVITY_2G;
+
+    return HAL_OK;
+}
+
+/**
+ * @brief  Prints raw and converted accelerometer data to the terminal
+ * @param  accel_data: pointer to the accelerometer data to print
+ * @retval None
+ */
+void IMU_PrintAccel(const IMU_AccelData_t *accel_data)
+{
+    printf("Accel raw [X:%6d Y:%6d Z:%6d]  ->  g [X:%+.3f Y:%+.3f Z:%+.3f]\r\n",
+           accel_data->accel_x_raw, accel_data->accel_y_raw, accel_data->accel_z_raw,
+           accel_data->accel_x_g, accel_data->accel_y_g, accel_data->accel_z_g);
+}
