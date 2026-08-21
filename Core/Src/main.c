@@ -23,8 +23,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+
 #include <stdio.h>
 #include "imu_driver.h"
+#include "dma_handler.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -48,6 +50,7 @@ CRC_HandleTypeDef hcrc;
 DMA2D_HandleTypeDef hdma2d;
 
 I2C_HandleTypeDef hi2c3;
+DMA_HandleTypeDef hdma_i2c3_rx;
 
 LTDC_HandleTypeDef hltdc;
 
@@ -67,6 +70,7 @@ osThreadId defaultTaskHandle;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_CRC_Init(void);
 static void MX_DMA2D_Init(void);
 static void MX_FMC_Init(void);
@@ -115,6 +119,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_CRC_Init();
   MX_DMA2D_Init();
   MX_FMC_Init();
@@ -126,7 +131,8 @@ int main(void)
   /* USER CODE BEGIN 2 */
   printf("Hello STM32\r\n");
   printf("=== Layer 1: MPU9250 WHO_AM_I Test ===\r\n");
-  IMU_CheckConnection(&hi2c3);
+
+   IMU_CheckConnection(&hi2c3);
 
   IMU_AccelData_t accel_sample;
   if (IMU_ReadAccel(&hi2c3, &accel_sample) == HAL_OK)
@@ -140,7 +146,61 @@ int main(void)
       IMU_PrintGyro(&gyro_sample);
   }
 
-  IMU_RunContinuousTest(&hi2c3);
+  // IMU_RunContinuousTest(&hi2c3);
+
+#define DMA_TEST_DURATION_MS   (2U * 60U * 1000U)   /* 2 minutes */
+
+DMA_CircularBuffer_t *dma_buf = DMA_Handler_GetBuffer();
+DMA_Handler_Init(&hi2c3);
+DMA_Handler_StartFirstRead();
+
+uint32_t dma_test_start   = HAL_GetTick();
+uint32_t last_print_tick  = dma_test_start;
+uint32_t idle_loop_count  = 0;
+uint32_t halves_processed = 0;
+
+printf("\r\n=== Layer 2: DMA Circular Buffer Test ===\r\n");
+printf("Duration: %lu ms | samples/half: %u | total buffer slots: %u\r\n",
+       (unsigned long)DMA_TEST_DURATION_MS, DMA_SAMPLES_PER_HALF, DMA_BUFFER_SAMPLE_COUNT);
+
+while ((HAL_GetTick() - dma_test_start) < DMA_TEST_DURATION_MS)
+{
+    idle_loop_count++;
+
+    if (dma_buf->half_ready_flag == 1 && dma_buf->half_processed == 0)
+    {
+        DMA_Sample_t sample;
+        DMA_Handler_ParseSample(dma_buf->raw_samples[0], &sample);
+        halves_processed++;
+        dma_buf->half_processed = 1;
+    }
+
+    if (dma_buf->full_ready_flag == 1 && dma_buf->full_processed == 0)
+    {
+        DMA_Sample_t sample;
+        DMA_Handler_ParseSample(dma_buf->raw_samples[DMA_SAMPLES_PER_HALF], &sample);
+        halves_processed++;
+        dma_buf->full_processed = 1;
+    }
+
+    if ((HAL_GetTick() - last_print_tick) >= 1000U)
+    {
+        last_print_tick = HAL_GetTick();
+        printf("[t=%lus] samples:%lu halves:%lu overflow:%lu idle_loops:%lu\r\n",
+               (unsigned long)((HAL_GetTick() - dma_test_start) / 1000U),
+               (unsigned long)dma_buf->total_samples_written,
+               (unsigned long)halves_processed,
+               (unsigned long)dma_buf->overflow_count,
+               (unsigned long)idle_loop_count);
+    }
+}
+
+printf("\r\n=== DMA Test Summary ===\r\n");
+printf("Total samples written : %lu\r\n", (unsigned long)dma_buf->total_samples_written);
+printf("Halves processed      : %lu\r\n", (unsigned long)halves_processed);
+printf("Overflow count         : %lu\r\n", (unsigned long)dma_buf->overflow_count);
+printf("Idle loop iterations   : %lu (CPU free-time proxy)\r\n", (unsigned long)idle_loop_count);
+printf("========================\r\n");
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -516,6 +576,22 @@ static void MX_USART1_UART_Init(void)
   /* USER CODE BEGIN USART1_Init 2 */
 
   /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Stream2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream2_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream2_IRQn);
 
 }
 
