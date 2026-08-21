@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include "imu_driver.h"
 #include "dma_handler.h"
+#include "scheduler_eval.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -88,6 +89,66 @@ void StartDefaultTask(void const * argument);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+/**
+ * @brief  Manually recovers a stuck I2C bus by bit-banging up to 9 clock
+ *         pulses on SCL while SDA is released, then issuing a STOP
+ *         condition. Must run BEFORE MX_I2C3_Init(), while the pins are
+ *         still free to be reconfigured as plain GPIO.
+ * @note   PA8 = I2C3_SCL, PC9 = I2C3_SDA on this board.
+ * @retval None
+ */
+static void I2C3_BusRecovery(void)
+{
+    GPIO_InitTypeDef gpio_init = {0};
+
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+
+    /* Temporarily drive both lines as open-drain GPIO outputs, mimicking
+     * real I2C electrical behavior (never actively drive HIGH, only
+     * pull LOW or release/float). */
+    gpio_init.Mode  = GPIO_MODE_OUTPUT_OD;
+    gpio_init.Pull  = GPIO_NOPULL;
+    gpio_init.Speed = GPIO_SPEED_FREQ_LOW;
+
+    gpio_init.Pin = GPIO_PIN_8;
+    HAL_GPIO_Init(GPIOA, &gpio_init);   /* SCL */
+
+    gpio_init.Pin = GPIO_PIN_9;
+    HAL_GPIO_Init(GPIOC, &gpio_init);   /* SDA */
+
+    /* Release both lines first (idle state = both HIGH via pull-ups) */
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_9, GPIO_PIN_SET);
+    HAL_Delay(1);
+
+    /* Pulse SCL up to 9 times, checking after each pulse whether the
+     * slave has released SDA (gone back HIGH) - if so, we can stop early. */
+    for (uint8_t i = 0; i < 9; i++)
+    {
+        if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9) == GPIO_PIN_SET)
+        {
+            break; /* SDA already released, bus is free */
+        }
+
+        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET); /* SCL low */
+        HAL_Delay(1);
+        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);   /* SCL high */
+        HAL_Delay(1);
+    }
+
+    /* Generate a STOP condition manually: SDA low->high while SCL is high */
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_9, GPIO_PIN_RESET); /* SDA low  */
+    HAL_Delay(1);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);   /* SCL high */
+    HAL_Delay(1);
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_9, GPIO_PIN_SET);   /* SDA high -> STOP */
+    HAL_Delay(1);
+
+    /* Pins will be reconfigured to I2C3 alternate function automatically
+     * when MX_I2C3_Init() runs right after this function returns. */
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -123,28 +184,38 @@ int main(void)
   MX_CRC_Init();
   MX_DMA2D_Init();
   MX_FMC_Init();
+  I2C3_BusRecovery();
   MX_I2C3_Init();
   MX_LTDC_Init();
   MX_SPI5_Init();
   MX_TIM1_Init();
   MX_USART1_UART_Init();
+
   /* USER CODE BEGIN 2 */
+
+  SchedEval_InitDWT();
+
   printf("Hello STM32\r\n");
   printf("=== Layer 1: MPU9250 WHO_AM_I Test ===\r\n");
 
    IMU_CheckConnection(&hi2c3);
 
-  IMU_AccelData_t accel_sample;
-  if (IMU_ReadAccel(&hi2c3, &accel_sample) == HAL_OK)
-  {
-      IMU_PrintAccel(&accel_sample);
-  }
+   IMU_AccelData_t accel_sample;
+   uint32_t t_accel_start = SCHED_EVAL_START();
+   if (IMU_ReadAccel(&hi2c3, &accel_sample) == HAL_OK)
+   {
+       IMU_PrintAccel(&accel_sample);
+   }
+   SCHED_EVAL_STOP_AND_PRINT(t_accel_start, "IMU_ReadAccel");
 
-  IMU_GyroData_t gyro_sample;
-  if (IMU_ReadGyro(&hi2c3, &gyro_sample) == HAL_OK)
-  {
-      IMU_PrintGyro(&gyro_sample);
-  }
+   IMU_GyroData_t gyro_sample;
+   uint32_t t_gyro_start = SCHED_EVAL_START();
+   if (IMU_ReadGyro(&hi2c3, &gyro_sample) == HAL_OK)
+   {
+       IMU_PrintGyro(&gyro_sample);
+   }
+   SCHED_EVAL_STOP_AND_PRINT(t_gyro_start, "IMU_ReadGyro");
+
 
   // IMU_RunContinuousTest(&hi2c3);
 
