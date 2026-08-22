@@ -33,6 +33,11 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
+typedef struct {
+    uint32_t trigger_count;   /* placeholder counter for now */
+    float    result_value;    /* will hold RMS/peak/etc. in Katman 3 */
+} DSP_Result_t;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -67,6 +72,7 @@ osThreadId defaultTaskHandle;
 osThreadId IMU_TaskHandle;
 osThreadId DSP_TaskHandle;
 osThreadId UART_TaskHandle;
+osMessageQId DSP_Result_QueueHandle;
 osSemaphoreId IMU_DataReady_SemHandle;
 /* USER CODE BEGIN PV */
 
@@ -182,12 +188,13 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
+  I2C3_BusRecovery();
+
 
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  I2C3_BusRecovery();
   MX_DMA_Init();
   MX_CRC_Init();
   MX_DMA2D_Init();
@@ -253,6 +260,11 @@ int main(void)
   /* USER CODE BEGIN RTOS_TIMERS */
   /* start timers, add new ones, ... */
   /* USER CODE END RTOS_TIMERS */
+
+  /* Create the queue(s) */
+  /* definition and creation of DSP_Result_Queue */
+  osMessageQDef(DSP_Result_Queue, 4, DSP_Result_t);
+  DSP_Result_QueueHandle = osMessageCreate(osMessageQ(DSP_Result_Queue), NULL);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
@@ -886,7 +898,13 @@ void StartDSPTask(void const * argument)
 	    osSemaphoreWait(IMU_DataReady_SemHandle, osWaitForever);
 
 	    dsp_trigger_count++;
-	    /* Placeholder: actual FFT/FIR/IIR processing will go here in Katman 3 */
+	    /* Placeholder: actual FFT/FIR/IIR processing will go here in Layer 3 */
+
+	    static DSP_Result_t result;
+	    result.trigger_count = dsp_trigger_count;
+	    result.result_value  = 0.0f;   /* placeholder, meaningful once Layer 3 lands */
+
+	    osMessagePut(DSP_Result_QueueHandle, (uint32_t)&result, 0);
 
 	    if (dsp_trigger_count % 500 == 0)
 	    {
@@ -908,10 +926,27 @@ void StartUARTTask(void const * argument)
 {
   /* USER CODE BEGIN StartUARTTask */
   /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
+	  DSP_Result_t *received_result;
+	  osEvent evt;
+
+	  printf("\r\n=== UART_Task started (waiting on DSP_Result_Queue) ===\r\n");
+
+	  for(;;)
+	  {
+	    evt = osMessageGet(DSP_Result_QueueHandle, osWaitForever);
+
+	    if (evt.status == osEventMessage)
+	    {
+	      received_result = (DSP_Result_t *)evt.value.p;
+
+	      if (received_result->trigger_count % 500 == 0)
+	      {
+	        printf("[UART_Task] received DSP result #%lu (value=%.3f)\r\n",
+	               (unsigned long)received_result->trigger_count,
+	               received_result->result_value);
+	      }
+	    }
+	  }
   /* USER CODE END StartUARTTask */
 }
 
