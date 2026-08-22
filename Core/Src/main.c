@@ -64,6 +64,10 @@ UART_HandleTypeDef huart1;
 SDRAM_HandleTypeDef hsdram1;
 
 osThreadId defaultTaskHandle;
+osThreadId IMU_TaskHandle;
+osThreadId DSP_TaskHandle;
+osThreadId UART_TaskHandle;
+osSemaphoreId IMU_DataReady_SemHandle;
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -81,6 +85,9 @@ static void MX_SPI5_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_USART1_UART_Init(void);
 void StartDefaultTask(void const * argument);
+void StartIMUTask(void const * argument);
+void StartDSPTask(void const * argument);
+void StartUARTTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -180,17 +187,16 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  I2C3_BusRecovery();
   MX_DMA_Init();
   MX_CRC_Init();
   MX_DMA2D_Init();
   MX_FMC_Init();
-  I2C3_BusRecovery();
   MX_I2C3_Init();
   MX_LTDC_Init();
   MX_SPI5_Init();
   MX_TIM1_Init();
   MX_USART1_UART_Init();
-
   /* USER CODE BEGIN 2 */
 
   SchedEval_InitDWT();
@@ -219,67 +225,29 @@ int main(void)
 
   // IMU_RunContinuousTest(&hi2c3);
 
-#define DMA_TEST_DURATION_MS   (2U * 60U * 1000U)   /* 2 minutes */
-
-DMA_CircularBuffer_t *dma_buf = DMA_Handler_GetBuffer();
-DMA_Handler_Init(&hi2c3);
-DMA_Handler_StartFirstRead();
-
-uint32_t dma_test_start   = HAL_GetTick();
-uint32_t last_print_tick  = dma_test_start;
-uint32_t idle_loop_count  = 0;
-uint32_t halves_processed = 0;
-
-printf("\r\n=== Layer 2: DMA Circular Buffer Test ===\r\n");
-printf("Duration: %lu ms | samples/half: %u | total buffer slots: %u\r\n",
-       (unsigned long)DMA_TEST_DURATION_MS, DMA_SAMPLES_PER_HALF, DMA_BUFFER_SAMPLE_COUNT);
-
-while ((HAL_GetTick() - dma_test_start) < DMA_TEST_DURATION_MS)
-{
-    idle_loop_count++;
-
-    if (dma_buf->half_ready_flag == 1 && dma_buf->half_processed == 0)
-    {
-        DMA_Sample_t sample;
-        DMA_Handler_ParseSample(dma_buf->raw_samples[0], &sample);
-        halves_processed++;
-        dma_buf->half_processed = 1;
-    }
-
-    if (dma_buf->full_ready_flag == 1 && dma_buf->full_processed == 0)
-    {
-        DMA_Sample_t sample;
-        DMA_Handler_ParseSample(dma_buf->raw_samples[DMA_SAMPLES_PER_HALF], &sample);
-        halves_processed++;
-        dma_buf->full_processed = 1;
-    }
-
-    if ((HAL_GetTick() - last_print_tick) >= 1000U)
-    {
-        last_print_tick = HAL_GetTick();
-        printf("[t=%lus] samples:%lu halves:%lu overflow:%lu idle_loops:%lu\r\n",
-               (unsigned long)((HAL_GetTick() - dma_test_start) / 1000U),
-               (unsigned long)dma_buf->total_samples_written,
-               (unsigned long)halves_processed,
-               (unsigned long)dma_buf->overflow_count,
-               (unsigned long)idle_loop_count);
-    }
-}
-
-printf("\r\n=== DMA Test Summary ===\r\n");
-printf("Total samples written : %lu\r\n", (unsigned long)dma_buf->total_samples_written);
-printf("Halves processed      : %lu\r\n", (unsigned long)halves_processed);
-printf("Overflow count         : %lu\r\n", (unsigned long)dma_buf->overflow_count);
-printf("Idle loop iterations   : %lu (CPU free-time proxy)\r\n", (unsigned long)idle_loop_count);
-printf("========================\r\n");
+   printf("\r\n=== Katman 4: Starting DMA acquisition chain ===\r\n");
+   DMA_Handler_Init(&hi2c3);
+   DMA_Handler_StartFirstRead();
+   printf("DMA acquisition running. IMU_Task will now process samples continuously.\r\n");
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
   /* USER CODE END RTOS_MUTEX */
 
+  /* Create the semaphores(s) */
+  /* definition and creation of IMU_DataReady_Sem */
+  osSemaphoreDef(IMU_DataReady_Sem);
+  IMU_DataReady_SemHandle = osSemaphoreCreate(osSemaphore(IMU_DataReady_Sem), 1);
+
   /* USER CODE BEGIN RTOS_SEMAPHORES */
-  /* add semaphores, ... */
+
+  /* Deplete the semaphore immediately: CMSIS_V1 osSemaphoreCreate() always
+   * starts with 1 available token regardless of the "Depleted" setting
+   * chosen in CubeMX, so we manually consume it here to enforce the
+   * intended initial state (no data ready yet at boot). */
+  osSemaphoreWait(IMU_DataReady_SemHandle, 0);
+
   /* USER CODE END RTOS_SEMAPHORES */
 
   /* USER CODE BEGIN RTOS_TIMERS */
@@ -294,6 +262,18 @@ printf("========================\r\n");
   /* definition and creation of defaultTask */
   osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 4096);
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
+
+  /* definition and creation of IMU_Task */
+  osThreadDef(IMU_Task, StartIMUTask, osPriorityAboveNormal, 0, 256);
+  IMU_TaskHandle = osThreadCreate(osThread(IMU_Task), NULL);
+
+  /* definition and creation of DSP_Task */
+  osThreadDef(DSP_Task, StartDSPTask, osPriorityNormal, 0, 512);
+  DSP_TaskHandle = osThreadCreate(osThread(DSP_Task), NULL);
+
+  /* definition and creation of UART_Task */
+  osThreadDef(UART_Task, StartUARTTask, osPriorityBelowNormal, 0, 256);
+  UART_TaskHandle = osThreadCreate(osThread(UART_Task), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -831,6 +811,108 @@ void StartDefaultTask(void const * argument)
     osDelay(1);
   }
   /* USER CODE END 5 */
+}
+
+/* USER CODE BEGIN Header_StartIMUTask */
+/**
+* @brief Function implementing the IMU_Task thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartIMUTask */
+void StartIMUTask(void const * argument)
+{
+  /* USER CODE BEGIN StartIMUTask */
+  DMA_CircularBuffer_t *dma_buf = DMA_Handler_GetBuffer();
+  uint32_t last_print_tick  = HAL_GetTick();
+  uint32_t idle_loop_count  = 0;
+  uint32_t halves_processed = 0;
+
+  printf("\r\n=== IMU_Task started (continuous acquisition, priority AboveNormal) ===\r\n");
+
+  for(;;)
+  {
+    idle_loop_count++;
+
+    if (dma_buf->half_ready_flag == 1 && dma_buf->half_processed == 0)
+    {
+      DMA_Sample_t sample;
+      DMA_Handler_ParseSample(dma_buf->raw_samples[0], &sample);
+      halves_processed++;
+      dma_buf->half_processed = 1;
+      osSemaphoreRelease(IMU_DataReady_SemHandle);
+    }
+
+    if (dma_buf->full_ready_flag == 1 && dma_buf->full_processed == 0)
+    {
+      DMA_Sample_t sample;
+      DMA_Handler_ParseSample(dma_buf->raw_samples[DMA_SAMPLES_PER_HALF], &sample);
+      halves_processed++;
+      dma_buf->full_processed = 1;
+      osSemaphoreRelease(IMU_DataReady_SemHandle);
+    }
+
+    if ((HAL_GetTick() - last_print_tick) >= 1000U)
+    {
+      last_print_tick = HAL_GetTick();
+      printf("[IMU_Task] samples:%lu halves:%lu overflow:%lu loops:%lu\r\n",
+             (unsigned long)dma_buf->total_samples_written,
+             (unsigned long)halves_processed,
+             (unsigned long)dma_buf->overflow_count,
+             (unsigned long)idle_loop_count);
+    }
+
+    osDelay(1);
+  }
+  /* USER CODE END StartIMUTask */
+}
+
+/* USER CODE BEGIN Header_StartDSPTask */
+/**
+* @brief Function implementing the DSP_Task thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartDSPTask */
+void StartDSPTask(void const * argument)
+{
+  /* USER CODE BEGIN StartDSPTask */
+	  uint32_t dsp_trigger_count = 0;
+
+	  printf("\r\n=== DSP_Task started (waiting on IMU_DataReady_Sem) ===\r\n");
+
+	  for(;;)
+	  {
+	    osSemaphoreWait(IMU_DataReady_SemHandle, osWaitForever);
+
+	    dsp_trigger_count++;
+	    /* Placeholder: actual FFT/FIR/IIR processing will go here in Katman 3 */
+
+	    if (dsp_trigger_count % 500 == 0)
+	    {
+	      printf("[DSP_Task] triggered %lu times by IMU_Task\r\n",
+	             (unsigned long)dsp_trigger_count);
+	    }
+	  }
+  /* USER CODE END StartDSPTask */
+}
+
+/* USER CODE BEGIN Header_StartUARTTask */
+/**
+* @brief Function implementing the UART_Task thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartUARTTask */
+void StartUARTTask(void const * argument)
+{
+  /* USER CODE BEGIN StartUARTTask */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END StartUARTTask */
 }
 
 /**
