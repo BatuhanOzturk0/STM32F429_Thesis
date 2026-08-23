@@ -242,3 +242,33 @@ void DSP_RunIIR_FromIMU(float32_t accel_x_g, float32_t accel_y_g, float32_t acce
 
     iir_sample_count = 0; /* reset for the next window */
 }
+#define RMS_WINDOW_SIZE 128
+
+static float32_t rms_buffer[RMS_WINDOW_SIZE];
+static uint32_t rms_sample_count = 0;
+
+void DSP_RunRMS_FromIMU(float32_t accel_x_g, float32_t accel_y_g, float32_t accel_z_g)
+{
+    /* Combined magnitude, same approach as the FFT/FIR/IIR feed */
+    float32_t magnitude = sqrtf(accel_x_g * accel_x_g +
+                                 accel_y_g * accel_y_g +
+                                 accel_z_g * accel_z_g);
+
+    if (rms_sample_count < RMS_WINDOW_SIZE)
+    {
+        rms_buffer[rms_sample_count] = magnitude;
+        rms_sample_count++;
+        return;
+    }
+
+    /* Window full: compute RMS over the whole block at once */
+    float32_t rms_result = 0.0f;
+
+    uint32_t t_start = SCHED_EVAL_START();
+    arm_rms_f32(rms_buffer, RMS_WINDOW_SIZE, &rms_result);
+    SCHED_EVAL_STOP_AND_PRINT(t_start, "RMS_Compute");
+
+    printf("[RMS] window_size=%u value=%.5f g\r\n", RMS_WINDOW_SIZE, rms_result);
+
+    rms_sample_count = 0; /* reset for the next window */
+}

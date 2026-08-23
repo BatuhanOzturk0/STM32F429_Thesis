@@ -17,5 +17,6 @@ void DSP_BenchmarkFFT(uint16_t fft_size);
 
 void DSP_RunFIR_FromIMU(float32_t accel_x_g, float32_t accel_y_g, float32_t accel_z_g);
 void DSP_RunIIR_FromIMU(float32_t accel_x_g, float32_t accel_y_g, float32_t accel_z_g);
+void DSP_RunRMS_FromIMU(float32_t accel_x_g, float32_t accel_y_g, float32_t accel_z_g);
 
 #endif /* DSP_MODULE_H */
