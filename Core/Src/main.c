@@ -872,6 +872,9 @@ void StartIMUTask(void const * argument)
                           sample.accel_y_raw / MPU9250_ACCEL_SENSITIVITY_2G,
                           sample.accel_z_raw / MPU9250_ACCEL_SENSITIVITY_2G);
 
+      DSP_RunIIR_FromIMU(sample.accel_x_raw / MPU9250_ACCEL_SENSITIVITY_2G,
+                          sample.accel_y_raw / MPU9250_ACCEL_SENSITIVITY_2G,
+                          sample.accel_z_raw / MPU9250_ACCEL_SENSITIVITY_2G);
       osSemaphoreRelease(IMU_DataReady_SemHandle);
     }
 
@@ -890,6 +893,10 @@ void StartIMUTask(void const * argument)
         DSP_RunFIR_FromIMU(sample.accel_x_raw / MPU9250_ACCEL_SENSITIVITY_2G,
                             sample.accel_y_raw / MPU9250_ACCEL_SENSITIVITY_2G,
                             sample.accel_z_raw / MPU9250_ACCEL_SENSITIVITY_2G);
+
+        DSP_RunIIR_FromIMU(sample.accel_x_raw / MPU9250_ACCEL_SENSITIVITY_2G,
+                           sample.accel_y_raw / MPU9250_ACCEL_SENSITIVITY_2G,
+                           sample.accel_z_raw / MPU9250_ACCEL_SENSITIVITY_2G);
 
         osSemaphoreRelease(IMU_DataReady_SemHandle);
     }

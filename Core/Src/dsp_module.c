@@ -12,6 +12,7 @@
 
 #include "scheduler_eval.h"
 #include "fir_coeffs.h"
+#include "iir_coeffs.h"
 
 #define FFT_SIZE        256
 #define TEST_FREQ_HZ    10.0f
@@ -193,4 +194,51 @@ void DSP_RunFIR_FromIMU(float32_t accel_x_g, float32_t accel_y_g, float32_t acce
     printf("FIR_END\r\n");
 
     fir_sample_count = 0; /* reset for the next window */
+}
+
+
+#define IIR_WINDOW_SIZE 128
+
+static arm_biquad_cascade_df2T_instance_f32 iir_instance;
+static float32_t iir_state[IIR_NUM_STAGES * 2]; /* CMSIS-DSP DF2T requires 2 state values per stage */
+static uint8_t iir_initialized = 0;
+
+static float32_t iir_raw_buffer[IIR_WINDOW_SIZE];
+static float32_t iir_filtered_buffer[IIR_WINDOW_SIZE];
+static uint32_t iir_sample_count = 0;
+
+void DSP_RunIIR_FromIMU(float32_t accel_x_g, float32_t accel_y_g, float32_t accel_z_g)
+{
+    if (!iir_initialized)
+    {
+        arm_biquad_cascade_df2T_init_f32(&iir_instance, IIR_NUM_STAGES, (float32_t *)iir_coeffs, iir_state);
+        iir_initialized = 1;
+    }
+
+    /* Combined magnitude, same approach as the FFT/FIR feed */
+    float32_t magnitude = sqrtf(accel_x_g * accel_x_g +
+                                 accel_y_g * accel_y_g +
+                                 accel_z_g * accel_z_g);
+
+    if (iir_sample_count < IIR_WINDOW_SIZE)
+    {
+        iir_raw_buffer[iir_sample_count] = magnitude;
+        iir_sample_count++;
+        return;
+    }
+
+    /* Window full: run the IIR filter over the whole block at once */
+    uint32_t t_start = SCHED_EVAL_START();
+    arm_biquad_cascade_df2T_f32(&iir_instance, iir_raw_buffer, iir_filtered_buffer, IIR_WINDOW_SIZE);
+    SCHED_EVAL_STOP_AND_PRINT(t_start, "IIR_Compute");
+
+    /* Send raw vs filtered pairs over UART in CSV format: index,raw,filtered */
+    printf("IIR_START\r\n");
+    for (uint32_t i = 0; i < IIR_WINDOW_SIZE; i++)
+    {
+        printf("%lu,%.5f,%.5f\r\n", (unsigned long)i, iir_raw_buffer[i], iir_filtered_buffer[i]);
+    }
+    printf("IIR_END\r\n");
+
+    iir_sample_count = 0; /* reset for the next window */
 }
