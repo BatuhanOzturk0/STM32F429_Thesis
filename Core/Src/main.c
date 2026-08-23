@@ -20,11 +20,14 @@
 #include "main.h"
 #include "cmsis_os.h"
 #include "usb_host.h"
+#include "arm_math.h"
+#include "dsp_module.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
 #include <stdio.h>
+#include <math.h>
 #include "imu_driver.h"
 #include "dma_handler.h"
 #include "scheduler_eval.h"
@@ -236,6 +239,14 @@ int main(void)
    DMA_Handler_Init(&hi2c3);
    DMA_Handler_StartFirstRead();
    printf("DMA acquisition running. IMU_Task will now process samples continuously.\r\n");
+
+   DSP_TestFFT_256();  /* Temporary test - for Layer 3 verification */
+
+   /* Layer 3, Step 3.4: FFT size comparison benchmark */
+   DSP_BenchmarkFFT(256);
+   DSP_BenchmarkFFT(512);
+   DSP_BenchmarkFFT(1024);
+
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -852,16 +863,35 @@ void StartIMUTask(void const * argument)
       DMA_Handler_ParseSample(dma_buf->raw_samples[0], &sample);
       halves_processed++;
       dma_buf->half_processed = 1;
+
+      DSP_RunFFT_FromIMU(sample.accel_x_raw / MPU9250_ACCEL_SENSITIVITY_2G,
+                          sample.accel_y_raw / MPU9250_ACCEL_SENSITIVITY_2G,
+                          sample.accel_z_raw / MPU9250_ACCEL_SENSITIVITY_2G);
+
+      DSP_RunFIR_FromIMU(sample.accel_x_raw / MPU9250_ACCEL_SENSITIVITY_2G,
+                          sample.accel_y_raw / MPU9250_ACCEL_SENSITIVITY_2G,
+                          sample.accel_z_raw / MPU9250_ACCEL_SENSITIVITY_2G);
+
       osSemaphoreRelease(IMU_DataReady_SemHandle);
     }
 
+
     if (dma_buf->full_ready_flag == 1 && dma_buf->full_processed == 0)
     {
-      DMA_Sample_t sample;
-      DMA_Handler_ParseSample(dma_buf->raw_samples[DMA_SAMPLES_PER_HALF], &sample);
-      halves_processed++;
-      dma_buf->full_processed = 1;
-      osSemaphoreRelease(IMU_DataReady_SemHandle);
+        DMA_Sample_t sample;
+        DMA_Handler_ParseSample(dma_buf->raw_samples[DMA_SAMPLES_PER_HALF], &sample);
+        halves_processed++;
+        dma_buf->full_processed = 1;
+
+        DSP_RunFFT_FromIMU(sample.accel_x_raw / MPU9250_ACCEL_SENSITIVITY_2G,
+                            sample.accel_y_raw / MPU9250_ACCEL_SENSITIVITY_2G,
+                            sample.accel_z_raw / MPU9250_ACCEL_SENSITIVITY_2G);
+
+        DSP_RunFIR_FromIMU(sample.accel_x_raw / MPU9250_ACCEL_SENSITIVITY_2G,
+                            sample.accel_y_raw / MPU9250_ACCEL_SENSITIVITY_2G,
+                            sample.accel_z_raw / MPU9250_ACCEL_SENSITIVITY_2G);
+
+        osSemaphoreRelease(IMU_DataReady_SemHandle);
     }
 
     if ((HAL_GetTick() - last_print_tick) >= 1000U)
