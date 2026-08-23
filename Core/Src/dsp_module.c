@@ -272,3 +272,36 @@ void DSP_RunRMS_FromIMU(float32_t accel_x_g, float32_t accel_y_g, float32_t acce
 
     rms_sample_count = 0; /* reset for the next window */
 }
+
+#define PEAK_WINDOW_SIZE 128
+
+static float32_t peak_buffer[PEAK_WINDOW_SIZE];
+static uint32_t peak_sample_count = 0;
+
+void DSP_RunPeakDetect_FromIMU(float32_t accel_x_g, float32_t accel_y_g, float32_t accel_z_g)
+{
+    /* Combined magnitude, same approach as the FFT/FIR/IIR/RMS feed */
+    float32_t magnitude = sqrtf(accel_x_g * accel_x_g +
+                                 accel_y_g * accel_y_g +
+                                 accel_z_g * accel_z_g);
+
+    if (peak_sample_count < PEAK_WINDOW_SIZE)
+    {
+        peak_buffer[peak_sample_count] = magnitude;
+        peak_sample_count++;
+        return;
+    }
+
+    /* Window full: find the peak value and its index over the whole block */
+    float32_t peak_value = 0.0f;
+    uint32_t peak_index = 0;
+
+    uint32_t t_start = SCHED_EVAL_START();
+    arm_max_f32(peak_buffer, PEAK_WINDOW_SIZE, &peak_value, &peak_index);
+    SCHED_EVAL_STOP_AND_PRINT(t_start, "PeakDetect_Compute");
+
+    printf("[PEAK] window_size=%u peak_value=%.5f g at index=%lu\r\n",
+           PEAK_WINDOW_SIZE, peak_value, (unsigned long)peak_index);
+
+    peak_sample_count = 0; /* reset for the next window */
+}
