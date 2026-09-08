@@ -3,9 +3,13 @@
 MSc Dissertation project (Gisma University of Applied Sciences) evaluating how **FreeRTOS task scheduling configuration** affects the latency, CPU load, and deadline behavior of a real time **IMU sensor → digital signal processing** pipeline on an ARM Cortex-M4 microcontroller.
 
 **Author:** Batuhan Öztürk
+
 **Supervisor:** Dr. Mohamad Hoseini
+
 **Module:** M598 — MSc Dissertation
+
 **Board:** STM32F429I-DISC1 (STM32F429ZIT6, Cortex-M4 @ 180 MHz)
+
 **Sensor:** MPU9250 9 axis IMU (I2C3)
 
 ---
@@ -38,22 +42,39 @@ The pipeline is organized into four layers:
 ## Repository Structure
 
 ├── Core/               Application source: drivers, DSP module, FreeRTOS tasks, main.c
+
 ├── Drivers/            ST HAL / CMSIS drivers
+
 ├── Middlewares/        FreeRTOS, CMSIS-DSP
+
 ├── USB_HOST/           USB host stack (board support)
+
 ├── docs/               Evidence and documentation (screenshots, CPU load captures)
+
 │   └── evidence/       CPU_LOAD_{A,B,C}_{START,FINAL}.png
+
 ├── python/             Host side analysis & plotting scripts (fft_plot.py, fir_plot.py, iir_plot.py, generate_fir_coeffs.py, generate_iir_coeffs.py)
+
 ├── results/            Final measurement outputs tables and charts (300 DPI)
+
 │   ├── TABLE_master_summary.png
+
 │   ├── TABLE_latency_summary.png
+
 │   ├── TABLE_cpu_load_summary.png
+
 │   ├── CHART_latency_by_config.png
+
 │   ├── CHART_latency_deadline_headroom.png
+
 │   └── CHART_cpu_load_by_config.png
+
 ├── Thesis_stm32F429.ioc      STM32CubeMX project configuration
+
 ├── STM32F429ZITX_FLASH.ld    Linker script (Flash)
+
 ├── STM32F429ZITX_RAM.ld      Linker script (RAM)
+
 └── .cproject / .project      STM32CubeIDE project files
 
 ## Hardware Setup
