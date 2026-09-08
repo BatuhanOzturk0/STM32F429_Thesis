@@ -16,9 +16,9 @@ MSc Dissertation project (Gisma University of Applied Sciences) evaluating how *
 
 ## Overview
 
-This project implements a four layer, real time embedded pipeline that acquires motion data from an IMU and processes it with a CMSIS-DSP filter chain (FFT, FIR, IIR, RMS, Peak detection) under FreeRTOS. Three FreeRTOS task priority configurations are benchmarked against one another to determine whether scheduling policy has a measurable effect on end to end latency, CPU utilization, and deadline compliance.
+This project implements a four layer, real time embedded pipeline that acquires motion data from an IMU and processes it with a CMSIS DSP filter chain (FFT, FIR, IIR, RMS, Peak detection) under FreeRTOS. Three FreeRTOS task priority configurations are benchmarked against one another to determine whether scheduling policy has a measurable effect on end to end latency, CPU utilization, and deadline compliance.
 
-**Key finding:** the system is significantly over-provisioned for its workload — DSP processing times are on the order of microseconds to milliseconds, while deadlines are on the order of seconds. As a result, scheduling configuration has **no measurable effect** on latency, CPU load, or deadline misses across all three configurations tested (latency variation <1.5%, zero deadline misses in every configuration).
+**Key finding:** the system is significantly over provisioned for its workload  DSP processing times are on the order of microseconds to milliseconds, while deadlines are on the order of seconds. As a result, scheduling configuration has **no measurable effect** on latency, CPU load, or deadline misses across all three configurations tested (latency variation <1.5%, zero deadline misses in every configuration).
 
 ## Architecture
 
@@ -28,7 +28,7 @@ The pipeline is organized into four layers:
 |---|---|
 | **1 — Sensor Driver** | HAL based I2C3 driver for the MPU9250, reading accelerometer, gyroscope, and temperature in a single 14 byte burst transaction (registers 0x3B–0x48). |
 | **2 — Buffering** | Software managed circular double buffer (half/full callback chaining), since I2C's transaction based nature is unsuited to hardware Circular DMA. |
-| **3 — DSP Processing** | CMSIS-DSP based signal chain: 256/512/1024-point FFT, 31 tap FIR (Hamming, 20 Hz cutoff), 4th order Butterworth IIR (biquad DF2T, 20 Hz cutoff), RMS, and peak detection. |
+| **3 — DSP Processing** | CMSIS DSP based signal chain: 256/512/1024-point FFT, 31 tap FIR (Hamming, 20 Hz cutoff), 4th order Butterworth IIR (biquad DF2T, 20 Hz cutoff), RMS, and peak detection. |
 | **4 — Scheduling** | FreeRTOS (CMSIS-OS v1) tasks  IMU_Task, DSP_Task, UART_Task  evaluated under three distinct priority configurations. |
 
 ### Scheduling configurations evaluated
@@ -82,7 +82,7 @@ The pipeline is organized into four layers:
 | Component | Detail |
 |---|---|
 | MCU board | STM32F429I-DISC1 |
-| IMU | MPU9250 (I2C, 3-axis accel + 3-axis gyro + temp) |
+| IMU | MPU9250 (I2C, 3 axis accel + 3 axis gyro + temp) |
 | Interface | I2C3 — SCL: PA8, SDA: PC9 |
 | Connection | Breadboard |
 
@@ -121,7 +121,7 @@ Full tables and charts are available in results/, and CPU load capture evidence 
 
 ## Limitations
 
-- Single-board study (no hardware replication).
+- Single board study (no hardware replication).
 - I2C was deliberately chosen over SPI for sensor interfacing; this trade off is discussed in the dissertation.
 - No environmental/temperature control during testing.
 - Power consumption and Flash/RAM footprint were not measured.
