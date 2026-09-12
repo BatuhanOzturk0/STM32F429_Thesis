@@ -20,4 +20,6 @@ void DSP_RunIIR_FromIMU(float32_t accel_x_g, float32_t accel_y_g, float32_t acce
 void DSP_RunRMS_FromIMU(float32_t accel_x_g, float32_t accel_y_g, float32_t accel_z_g);
 void DSP_RunPeakDetect_FromIMU(float32_t accel_x_g, float32_t accel_y_g, float32_t accel_z_g);
 
+void DSP_PrintAllLatencyStats(void);
+
 #endif /* DSP_MODULE_H */

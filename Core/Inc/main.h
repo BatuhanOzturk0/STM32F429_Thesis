@@ -244,6 +244,24 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN Private defines */
 
+/* ===================================================================
+ * Scheduling configuration selector for Config A/B/C evaluation.
+ * Change ACTIVE_SCHED_CONFIG and rebuild to switch between configs.
+ * =================================================================== */
+#define SCHED_CONFIG_A  1  /* Baseline: IMU=AboveNormal, DSP=Normal, UART=BelowNormal */
+#define SCHED_CONFIG_B  2  /* Equal priority: IMU=Normal, DSP=Normal, UART=Normal */
+#define SCHED_CONFIG_C  3  /* Inverted: IMU=BelowNormal, DSP=Normal, UART=AboveNormal */
+
+#define ACTIVE_SCHED_CONFIG SCHED_CONFIG_A
+
+#if ACTIVE_SCHED_CONFIG == SCHED_CONFIG_A
+  #define ACTIVE_SCHED_CONFIG_NAME "A"
+#elif ACTIVE_SCHED_CONFIG == SCHED_CONFIG_B
+  #define ACTIVE_SCHED_CONFIG_NAME "B"
+#elif ACTIVE_SCHED_CONFIG == SCHED_CONFIG_C
+  #define ACTIVE_SCHED_CONFIG_NAME "C"
+#endif
+
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

@@ -20,8 +20,6 @@
 #include "main.h"
 #include "cmsis_os.h"
 #include "usb_host.h"
-#include "arm_math.h"
-#include "dsp_module.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -30,6 +28,7 @@
 #include <math.h>
 #include "imu_driver.h"
 #include "dma_handler.h"
+#include "dsp_module.h"
 #include "scheduler_eval.h"
 /* USER CODE END Includes */
 
@@ -37,8 +36,10 @@
 /* USER CODE BEGIN PTD */
 
 typedef struct {
-    uint32_t trigger_count;   /* placeholder counter for now */
-    float    result_value;    /* will hold RMS/peak/etc. in Katman 3 */
+    uint32_t trigger_count;  /* placeholder counter for now */
+    float    result_value;   /* will hold RMS/peak/etc. in Katman 3 */
+    uint32_t t_start_cycle;  /* DWT cycle count when IMU_Task released this sample */
+    const char *dsp_label;   /* which DSP op produced this result, e.g. "FFT256" */
 } DSP_Result_t;
 
 /* USER CODE END PTD */
@@ -928,7 +929,22 @@ void StartIMUTask(void const * argument)
              (unsigned long)halves_processed,
              (unsigned long)dma_buf->overflow_count,
              (unsigned long)idle_loop_count);
+      static uint32_t stats_print_counter = 0;
+      stats_print_counter++;
+      if (stats_print_counter >= 10)  /* every 10th 1-second tick = every 10 seconds */
+      {
+          stats_print_counter = 0;
+          DSP_PrintAllLatencyStats();
+
+          static char runtime_stats_buf[512];
+          vTaskGetRunTimeStats(runtime_stats_buf);
+          printf("\r\n--- FreeRTOS Runtime Stats (config=%s) ---\r\n", ACTIVE_SCHED_CONFIG_NAME);
+          printf("Task\t\tAbs Time\t%% Time\r\n");
+          printf("%s", runtime_stats_buf);
+          printf("-------------------------------------------\r\n\r\n");
+      }
     }
+
 
     osDelay(1);
   }

@@ -7,6 +7,7 @@
 
 
 #include "dsp_module.h"
+#include "main.h"
 #include <stdio.h>
 #include <math.h>
 
@@ -17,6 +18,43 @@
 #define FFT_SIZE        256
 #define TEST_FREQ_HZ    10.0f
 #define SAMPLE_RATE_HZ  512.0f
+
+/* ===================================================================
+ * Latency statistics for the continuous IMU-driven DSP pipeline.
+ * Only covers functions that run continuously as part of Config A/B/C
+ * evaluation (FFT256, FIR, IIR, RMS, Peak). FFT512/1024 are one-time
+ * benchmarks (DSP_BenchmarkFFT) and are not part of this evaluation.
+ * =================================================================== */
+static SchedEval_LatencyStats_t g_stats_fft256;
+static SchedEval_LatencyStats_t g_stats_fir;
+static SchedEval_LatencyStats_t g_stats_iir;
+static SchedEval_LatencyStats_t g_stats_rms;
+static SchedEval_LatencyStats_t g_stats_peak;
+static uint8_t g_dsp_stats_initialized = 0;
+
+static void DSP_StatsInitIfNeeded(void)
+{
+    if (!g_dsp_stats_initialized)
+    {
+        SchedEval_StatsInit(&g_stats_fft256, "FFT256", SCHED_DEADLINE_US_FFT256);
+        SchedEval_StatsInit(&g_stats_fir,    "FIR",    SCHED_DEADLINE_US_FIR);
+        SchedEval_StatsInit(&g_stats_iir,    "IIR",    SCHED_DEADLINE_US_IIR);
+        SchedEval_StatsInit(&g_stats_rms,    "RMS",    SCHED_DEADLINE_US_RMS);
+        SchedEval_StatsInit(&g_stats_peak,   "PEAK",   SCHED_DEADLINE_US_PEAK);
+        g_dsp_stats_initialized = 1;
+    }
+}
+
+void DSP_PrintAllLatencyStats(void)
+{
+	printf("\r\n--- DSP Latency Stats (config=%s) ---\r\n", ACTIVE_SCHED_CONFIG_NAME);
+	SchedEval_StatsPrint(&g_stats_fft256);
+    SchedEval_StatsPrint(&g_stats_fir);
+    SchedEval_StatsPrint(&g_stats_iir);
+    SchedEval_StatsPrint(&g_stats_rms);
+    SchedEval_StatsPrint(&g_stats_peak);
+    printf("--------------------------------------\r\n\r\n");
+}
 
 /* Complex FFT input/output buffer: interleaved [real, imag, real, imag, ...] */
 static float32_t fft_input[FFT_SIZE * 2];
@@ -85,9 +123,14 @@ void DSP_RunFFT_FromIMU(float32_t accel_x_g, float32_t accel_y_g, float32_t acce
     }
 
     /* Buffer full (256 samples collected): run the FFT */
+    DSP_StatsInitIfNeeded();
+
     arm_cfft_instance_f32 fft_instance;
     arm_cfft_init_f32(&fft_instance, IMU_FFT_SIZE);
+
+    uint32_t t_start = SCHED_EVAL_START();
     arm_cfft_f32(&fft_instance, imu_fft_buffer, 0 /* forward */, 1 /* bit reverse */);
+    SCHED_EVAL_STOP_AND_ACCUMULATE(t_start, &g_stats_fft256);
 
     static float32_t mag_output[IMU_FFT_SIZE];
     arm_cmplx_mag_f32(imu_fft_buffer, mag_output, IMU_FFT_SIZE);
@@ -181,9 +224,11 @@ void DSP_RunFIR_FromIMU(float32_t accel_x_g, float32_t accel_y_g, float32_t acce
     }
 
     /* Window full: run the FIR filter over the whole block at once */
+    DSP_StatsInitIfNeeded();
     uint32_t t_start = SCHED_EVAL_START();
     arm_fir_f32(&fir_instance, fir_raw_buffer, fir_filtered_buffer, FIR_WINDOW_SIZE);
     SCHED_EVAL_STOP_AND_PRINT(t_start, "FIR_Compute");
+    SCHED_EVAL_STOP_AND_ACCUMULATE(t_start, &g_stats_fir);
 
     /* Send raw vs filtered pairs over UART in CSV format: index,raw,filtered */
     printf("FIR_START\r\n");
@@ -228,9 +273,11 @@ void DSP_RunIIR_FromIMU(float32_t accel_x_g, float32_t accel_y_g, float32_t acce
     }
 
     /* Window full: run the IIR filter over the whole block at once */
+    DSP_StatsInitIfNeeded();
     uint32_t t_start = SCHED_EVAL_START();
     arm_biquad_cascade_df2T_f32(&iir_instance, iir_raw_buffer, iir_filtered_buffer, IIR_WINDOW_SIZE);
     SCHED_EVAL_STOP_AND_PRINT(t_start, "IIR_Compute");
+    SCHED_EVAL_STOP_AND_ACCUMULATE(t_start, &g_stats_iir);
 
     /* Send raw vs filtered pairs over UART in CSV format: index,raw,filtered */
     printf("IIR_START\r\n");
@@ -264,9 +311,11 @@ void DSP_RunRMS_FromIMU(float32_t accel_x_g, float32_t accel_y_g, float32_t acce
     /* Window full: compute RMS over the whole block at once */
     float32_t rms_result = 0.0f;
 
+    DSP_StatsInitIfNeeded();
     uint32_t t_start = SCHED_EVAL_START();
     arm_rms_f32(rms_buffer, RMS_WINDOW_SIZE, &rms_result);
     SCHED_EVAL_STOP_AND_PRINT(t_start, "RMS_Compute");
+    SCHED_EVAL_STOP_AND_ACCUMULATE(t_start, &g_stats_rms);
 
     printf("[RMS] window_size=%u value=%.5f g\r\n", RMS_WINDOW_SIZE, rms_result);
 
@@ -296,9 +345,11 @@ void DSP_RunPeakDetect_FromIMU(float32_t accel_x_g, float32_t accel_y_g, float32
     float32_t peak_value = 0.0f;
     uint32_t peak_index = 0;
 
+    DSP_StatsInitIfNeeded();
     uint32_t t_start = SCHED_EVAL_START();
     arm_max_f32(peak_buffer, PEAK_WINDOW_SIZE, &peak_value, &peak_index);
     SCHED_EVAL_STOP_AND_PRINT(t_start, "PeakDetect_Compute");
+    SCHED_EVAL_STOP_AND_ACCUMULATE(t_start, &g_stats_peak);
 
     printf("[PEAK] window_size=%u peak_value=%.5f g at index=%lu\r\n",
            PEAK_WINDOW_SIZE, peak_value, (unsigned long)peak_index);

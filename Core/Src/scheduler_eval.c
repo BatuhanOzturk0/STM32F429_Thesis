@@ -78,3 +78,57 @@ void SchedEval_PrintMeasurement(const SchedEval_Measurement_t *m)
            (unsigned long)m->cycles,
            (unsigned long)m->duration_us);
 }
+/* ===================================================================
+ * Accumulating latency statistics implementation
+ * =================================================================== */
+
+void SchedEval_StatsInit(SchedEval_LatencyStats_t *stats, const char *label,
+                          uint32_t deadline_us)
+{
+    stats->label = label;
+    stats->deadline_us = deadline_us;
+    stats->count = 0;
+    stats->min_us = UINT32_MAX;
+    stats->max_us = 0;
+    stats->sum_us = 0;
+    stats->deadline_miss_count = 0;
+}
+
+void SchedEval_StatsUpdate(SchedEval_LatencyStats_t *stats, uint32_t duration_us)
+{
+    stats->count++;
+    stats->sum_us += duration_us;
+
+    if (duration_us < stats->min_us)
+    {
+        stats->min_us = duration_us;
+    }
+    if (duration_us > stats->max_us)
+    {
+        stats->max_us = duration_us;
+    }
+    if (duration_us > stats->deadline_us)
+    {
+        stats->deadline_miss_count++;
+    }
+}
+
+void SchedEval_StatsPrint(const SchedEval_LatencyStats_t *stats)
+{
+    uint32_t avg_us = (stats->count > 0)
+                       ? (uint32_t)(stats->sum_us / stats->count)
+                       : 0;
+    float miss_rate = (stats->count > 0)
+                       ? (100.0f * (float)stats->deadline_miss_count / (float)stats->count)
+                       : 0.0f;
+
+    printf("[STATS] %-8s count=%lu min=%luus max=%luus avg=%luus deadline=%luus misses=%lu (%.2f%%)\r\n",
+           stats->label,
+           (unsigned long)stats->count,
+           (unsigned long)stats->min_us,
+           (unsigned long)stats->max_us,
+           (unsigned long)avg_us,
+           (unsigned long)stats->deadline_us,
+           (unsigned long)stats->deadline_miss_count,
+           miss_rate);
+}

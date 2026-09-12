@@ -138,7 +138,24 @@ standard names. */
 #define xPortSysTickHandler SysTick_Handler
 
 /* USER CODE BEGIN Defines */
-/* Section where parameter definitions can be added (for instance, to override default ones in FreeRTOS.h) */
+  /* Section where parameter definitions can be added (for instance, to override default ones in FreeRTOS.h) */
+
+  /* ===================================================================
+   * Runtime statistics (per-task CPU load), for scheduling config
+   * evaluation. Uses HAL_GetTick() (1ms resolution, 32-bit, wraps after
+   * ~49.7 days) instead of the DWT cycle counter, because DWT->CYCCNT
+   * wraps every ~23.86s at 180MHz - far too short for our 5-minute
+   * measurement windows and would corrupt the runtime-stats percentages.
+   * =================================================================== */
+  #define configGENERATE_RUN_TIME_STATS          1
+  #define configUSE_TRACE_FACILITY               1
+  #define configUSE_STATS_FORMATTING_FUNCTIONS    1
+
+  extern uint32_t HAL_GetTick(void);
+
+  #define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS()   /* HAL_GetTick() is already running via SysTick, nothing to configure */
+  #define portGET_RUN_TIME_COUNTER_VALUE()           HAL_GetTick()
+
 /* USER CODE END Defines */
 
 #endif /* FREERTOS_CONFIG_H */

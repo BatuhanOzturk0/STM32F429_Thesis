@@ -49,4 +49,54 @@ void     SchedEval_PrintMeasurement(const SchedEval_Measurement_t *m);
         SchedEval_PrintMeasurement(&_m);                                \
     } while (0)
 
+/* ===================================================================
+ * Accumulating latency statistics (for scheduling config evaluation)
+ * =================================================================== */
+
+/* Deadlines, derived from the effective DSP window period (~35.55 ms,
+ * ~28.1 Hz — see thesis §4.9) multiplied by each DSP function's window
+ * size (128 samples for FIR/IIR/RMS/Peak, 256 for FFT). ... */
+#define SCHED_DEADLINE_US_FFT256   9101000U   /* 256 * 35.55 ms */
+#define SCHED_DEADLINE_US_FFT512   18202000U  /* 512 * 35.55 ms (not used in continuous eval) */
+#define SCHED_DEADLINE_US_FFT1024  36403000U  /* 1024 * 35.55 ms (not used in continuous eval) */
+#define SCHED_DEADLINE_US_FIR      4550000U   /* 128 * 35.55 ms */
+#define SCHED_DEADLINE_US_IIR      4550000U   /* 128 * 35.55 ms */
+#define SCHED_DEADLINE_US_RMS      4550000U   /* 128 * 35.55 ms */
+#define SCHED_DEADLINE_US_PEAK     4550000U   /* 128 * 35.55 ms */
+
+
+/* Running statistics for one DSP operation type over many samples.
+ * Tracks min/max/avg latency and deadline miss count without storing
+ * every individual measurement (constant memory, O(1) update). */
+typedef struct
+{
+    const char *label;             /* e.g. "FFT256", "FIR", "RMS" */
+    uint32_t    deadline_us;       /* deadline for this operation type */
+    uint32_t    count;             /* number of samples accumulated */
+    uint32_t    min_us;
+    uint32_t    max_us;
+    uint64_t    sum_us;            /* for computing average; 64-bit to avoid overflow */
+    uint32_t    deadline_miss_count;
+} SchedEval_LatencyStats_t;
+
+void SchedEval_StatsInit(SchedEval_LatencyStats_t *stats, const char *label,
+                          uint32_t deadline_us);
+void SchedEval_StatsUpdate(SchedEval_LatencyStats_t *stats, uint32_t duration_us);
+void SchedEval_StatsPrint(const SchedEval_LatencyStats_t *stats);
+
+
+/* Like SCHED_EVAL_STOP_AND_PRINT, but accumulates into a running
+ * SchedEval_LatencyStats_t instead of printing every single sample.
+ * Usage:
+ *   uint32_t _start = SCHED_EVAL_START();
+ *   ... code to measure ...
+ *   SCHED_EVAL_STOP_AND_ACCUMULATE(_start, &g_stats_fft256);
+ */
+#define SCHED_EVAL_STOP_AND_ACCUMULATE(start_var, stats_ptr)             \
+    do {                                                                 \
+        uint32_t _end_acc = SchedEval_GetCycles();                       \
+        uint32_t _cycles_acc = _end_acc - (start_var);                   \
+        uint32_t _dur_us_acc = SCHED_EVAL_CYCLES_TO_US(_cycles_acc);     \
+        SchedEval_StatsUpdate((stats_ptr), _dur_us_acc);                 \
+    } while (0)
 #endif /* INC_SCHEDULER_EVAL_H_ */
