@@ -13,9 +13,11 @@
 
 /* Core clock frequency, used to convert raw DWT cycle counts into
  * microseconds. Matches SystemCoreClock after SystemClock_Config()
- * has run (180 MHz on this STM32F429 project). Read at runtime via
- * SystemCoreClock instead of a hardcoded constant, so this stays
+ * has run (72 MHz on this STM32F429 project, per the CubeMX RCC
+ * configuration: 8 MHz HSE, PLLM=4, PLLN=72, PLLP=2). Read at runtime
+ * via SystemCoreClock instead of a hardcoded constant, so this stays
  * correct even if the clock configuration changes later. */
+
 #define SCHED_EVAL_CYCLES_TO_US(cycles)  \
     ((uint32_t)(((uint64_t)(cycles) * 1000000ULL) / SystemCoreClock))
 
@@ -54,8 +56,10 @@ void     SchedEval_PrintMeasurement(const SchedEval_Measurement_t *m);
  * =================================================================== */
 
 /* Deadlines, derived from the effective DSP window period (~35.55 ms,
- * ~28.1 Hz — see thesis §4.9) multiplied by each DSP function's window
- * size (128 samples for FIR/IIR/RMS/Peak, 256 for FFT). ... */
+ * ~28.1 Hz — see thesis §4.9 for derivation) multiplied by each DSP
+ * function's window size (128 samples for FIR/IIR/RMS/Peak, 256 for
+ * FFT). Values in microseconds. */
+
 #define SCHED_DEADLINE_US_FFT256   9101000U   /* 256 * 35.55 ms */
 #define SCHED_DEADLINE_US_FFT512   18202000U  /* 512 * 35.55 ms (not used in continuous eval) */
 #define SCHED_DEADLINE_US_FFT1024  36403000U  /* 1024 * 35.55 ms (not used in continuous eval) */
